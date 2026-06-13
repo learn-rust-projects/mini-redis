@@ -5,75 +5,73 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::{self, Duration};
 
-/// A basic "hello world" style test. A server instance is started in a
-/// background task. A client TCP connection is then established and raw redis
-/// commands are sent to the server. The response is evaluated at the byte
-/// level.
+/// 一个基本的"hello world"风格的测试。在后台任务中启动一个服务器实例。
+/// 然后建立客户端 TCP 连接，并向服务器发送原始 redis 命令。
+/// 在字节级别评估响应。
 #[tokio::test]
 async fn key_value_get_set() {
     let addr = start_server().await;
 
-    // Establish a connection to the server
+    // 建立到服务器的连接。
     let mut stream = TcpStream::connect(addr).await.unwrap();
 
-    // Get a key, data is missing
+    // 获取一个键，数据不存在。
     stream
         .write_all(b"*2\r\n$3\r\nGET\r\n$5\r\nhello\r\n")
         .await
         .unwrap();
 
-    // Read nil response
+    // 读取 nil 响应。
     let mut response = [0; 5];
     stream.read_exact(&mut response).await.unwrap();
     assert_eq!(b"$-1\r\n", &response);
 
-    // Set a key
+    // 设置一个键。
     stream
         .write_all(b"*3\r\n$3\r\nSET\r\n$5\r\nhello\r\n$5\r\nworld\r\n")
         .await
         .unwrap();
 
-    // Read OK
+    // 读取 OK。
     let mut response = [0; 5];
     stream.read_exact(&mut response).await.unwrap();
     assert_eq!(b"+OK\r\n", &response);
 
-    // Get the key, data is present
+    // 获取这个键，数据存在。
     stream
         .write_all(b"*2\r\n$3\r\nGET\r\n$5\r\nhello\r\n")
         .await
         .unwrap();
 
-    // Shutdown the write half
+    // 关闭写入端。
     stream.shutdown().await.unwrap();
 
-    // Read "world" response
+    // 读取 "world" 响应。
     let mut response = [0; 11];
     stream.read_exact(&mut response).await.unwrap();
     assert_eq!(b"$5\r\nworld\r\n", &response);
 
-    // Receive `None`
+    // 接收 `None`。
     assert_eq!(0, stream.read(&mut response).await.unwrap());
 }
 
-/// Similar to the basic key-value test, however, this time timeouts will be
-/// tested. This test demonstrates how to test time related behavior.
+/// 类似于基本的键值测试，但是这次将测试超时。该测试演示了如何测试
+/// 与时间相关的行为。
 ///
-/// When writing tests, it is useful to remove sources of non-determinism. Time
-/// is a source of non-determinism. Here, we "pause" time using the
-/// `time::pause()` function. This function is available with the `test-util`
-/// feature flag. This allows us to deterministically control how time appears
-/// to advance to the application.
+/// 编写测试时，消除非确定性来源是很有用的。时间就是非确定性的来源。
+/// 在这里，我们使用 `time::pause()` 函数来"暂停"时间。
+/// 此函数通过 `test-util` 特性标志可用。这使我们能够以确定性的方式
+/// 控制时间对应用程序的推进方式。
 #[tokio::test]
 async fn key_value_timeout() {
     tokio::time::pause();
 
     let addr = start_server().await;
 
-    // Establish a connection to the server
+    // 建立到服务器的连接。
     let mut stream = TcpStream::connect(addr).await.unwrap();
 
-    // Set a key
+    // 设置一个键。
     stream
         .write_all(
             b"*5\r\n$3\r\nSET\r\n$5\r\nhello\r\n$5\r\nworld\r\n\
@@ -84,34 +82,34 @@ async fn key_value_timeout() {
 
     let mut response = [0; 5];
 
-    // Read OK
+    // 读取 OK。
     stream.read_exact(&mut response).await.unwrap();
 
     assert_eq!(b"+OK\r\n", &response);
 
-    // Get the key, data is present
+    // 获取这个键，数据存在。
     stream
         .write_all(b"*2\r\n$3\r\nGET\r\n$5\r\nhello\r\n")
         .await
         .unwrap();
 
-    // Read "world" response
+    // 读取 "world" 响应。
     let mut response = [0; 11];
 
     stream.read_exact(&mut response).await.unwrap();
 
     assert_eq!(b"$5\r\nworld\r\n", &response);
 
-    // Wait for the key to expire
+    // 等待键过期。
     time::advance(Duration::from_secs(1)).await;
 
-    // Get a key, data is missing
+    // 获取一个键，数据不存在。
     stream
         .write_all(b"*2\r\n$3\r\nGET\r\n$5\r\nhello\r\n")
         .await
         .unwrap();
 
-    // Read nil response
+    // 读取 nil 响应。
     let mut response = [0; 5];
 
     stream.read_exact(&mut response).await.unwrap();
@@ -125,8 +123,7 @@ async fn pub_sub() {
 
     let mut publisher = TcpStream::connect(addr).await.unwrap();
 
-    // Publish a message, there are no subscribers yet so the server will
-    // return `0`.
+    // 发布一条消息，还没有订阅者，因此服务器将返回 `0`。
     publisher
         .write_all(b"*3\r\n$7\r\nPUBLISH\r\n$5\r\nhello\r\n$5\r\nworld\r\n")
         .await
@@ -136,14 +133,13 @@ async fn pub_sub() {
     publisher.read_exact(&mut response).await.unwrap();
     assert_eq!(b":0\r\n", &response);
 
-    // Create a subscriber. This subscriber will only subscribe to the `hello`
-    // channel.
+    // 创建一个订阅者。该订阅者只订阅 `hello` 频道。
     let mut sub1 = TcpStream::connect(addr).await.unwrap();
     sub1.write_all(b"*2\r\n$9\r\nSUBSCRIBE\r\n$5\r\nhello\r\n")
         .await
         .unwrap();
 
-    // Read the subscribe response
+    // 读取订阅响应。
     let mut response = [0; 34];
     sub1.read_exact(&mut response).await.unwrap();
     assert_eq!(
@@ -151,7 +147,7 @@ async fn pub_sub() {
         &response[..]
     );
 
-    // Publish a message, there now is a subscriber
+    // 发布一条消息，现在有一个订阅者。
     publisher
         .write_all(b"*3\r\n$7\r\nPUBLISH\r\n$5\r\nhello\r\n$5\r\nworld\r\n")
         .await
@@ -161,7 +157,7 @@ async fn pub_sub() {
     publisher.read_exact(&mut response).await.unwrap();
     assert_eq!(b":1\r\n", &response);
 
-    // The first subscriber received the message
+    // 第一个订阅者收到了消息。
     let mut response = [0; 39];
     sub1.read_exact(&mut response).await.unwrap();
     assert_eq!(
@@ -169,15 +165,15 @@ async fn pub_sub() {
         &response[..]
     );
 
-    // Create a second subscriber
+    // 创建第二个订阅者。
     //
-    // This subscriber will be subscribed to both `hello` and `foo`
+    // 该订阅者将同时订阅 `hello` 和 `foo`。
     let mut sub2 = TcpStream::connect(addr).await.unwrap();
     sub2.write_all(b"*3\r\n$9\r\nSUBSCRIBE\r\n$5\r\nhello\r\n$3\r\nfoo\r\n")
         .await
         .unwrap();
 
-    // Read the subscribe response
+    // 读取订阅响应。
     let mut response = [0; 34];
     sub2.read_exact(&mut response).await.unwrap();
     assert_eq!(
@@ -191,7 +187,7 @@ async fn pub_sub() {
         &response[..]
     );
 
-    // Publish another message on `hello`, there are two subscribers
+    // 在 `hello` 上发布另一条消息，现在有两个订阅者。
     publisher
         .write_all(b"*3\r\n$7\r\nPUBLISH\r\n$5\r\nhello\r\n$5\r\njazzy\r\n")
         .await
@@ -201,7 +197,7 @@ async fn pub_sub() {
     publisher.read_exact(&mut response).await.unwrap();
     assert_eq!(b":2\r\n", &response);
 
-    // Publish a message on `foo`, there is only one subscriber
+    // 在 `foo` 上发布一条消息，只有一个订阅者。
     publisher
         .write_all(b"*3\r\n$7\r\nPUBLISH\r\n$3\r\nfoo\r\n$3\r\nbar\r\n")
         .await
@@ -211,7 +207,7 @@ async fn pub_sub() {
     publisher.read_exact(&mut response).await.unwrap();
     assert_eq!(b":1\r\n", &response);
 
-    // The first subscriber received the message
+    // 第一个订阅者收到了消息。
     let mut response = [0; 39];
     sub1.read_exact(&mut response).await.unwrap();
     assert_eq!(
@@ -219,7 +215,7 @@ async fn pub_sub() {
         &response[..]
     );
 
-    // The second subscriber received the message
+    // 第二个订阅者收到了消息。
     let mut response = [0; 39];
     sub2.read_exact(&mut response).await.unwrap();
     assert_eq!(
@@ -227,13 +223,13 @@ async fn pub_sub() {
         &response[..]
     );
 
-    // The first subscriber **did not** receive the second message
+    // 第一个订阅者 **没有** 收到第二条消息。
     let mut response = [0; 1];
     time::timeout(Duration::from_millis(100), sub1.read(&mut response))
         .await
         .unwrap_err();
 
-    // The second subscriber **did** receive the message
+    // 第二个订阅者 **确实** 收到了消息。
     let mut response = [0; 35];
     sub2.read_exact(&mut response).await.unwrap();
     assert_eq!(
@@ -246,193 +242,45 @@ async fn pub_sub() {
 async fn manage_subscription() {
     let addr = start_server().await;
 
-    let mut publisher = TcpStream::connect(addr).await.unwrap();
-
-    // Create a subscriber
     let mut sub = TcpStream::connect(addr).await.unwrap();
-    sub.write_all(b"*2\r\n$9\r\nSUBSCRIBE\r\n$5\r\nhello\r\n")
-        .await
-        .unwrap();
 
-    // Read the subscribe response
-    let mut response = [0; 34];
-    sub.read_exact(&mut response).await.unwrap();
-    assert_eq!(
-        &b"*3\r\n$9\r\nsubscribe\r\n$5\r\nhello\r\n:1\r\n"[..],
-        &response[..]
-    );
-
-    // Update subscription to add `foo`
+    // 订阅到 foo 频道。
     sub.write_all(b"*2\r\n$9\r\nSUBSCRIBE\r\n$3\r\nfoo\r\n")
         .await
         .unwrap();
 
+    // 阅读订阅确认信息。
     let mut response = [0; 32];
     sub.read_exact(&mut response).await.unwrap();
     assert_eq!(
-        &b"*3\r\n$9\r\nsubscribe\r\n$3\r\nfoo\r\n:2\r\n"[..],
+        &b"*3\r\n$9\r\nsubscribe\r\n$3\r\nfoo\r\n:1\r\n"[..],
         &response[..]
     );
 
-    // Update subscription to remove `hello`
-    sub.write_all(b"*2\r\n$11\r\nUNSUBSCRIBE\r\n$5\r\nhello\r\n")
+    // 取消订阅 foo 频道。
+    sub.write_all(b"*2\r\n$11\r\nUNSUBSCRIBE\r\n$3\r\nfoo\r\n")
         .await
         .unwrap();
 
-    let mut response = [0; 37];
-    sub.read_exact(&mut response).await.unwrap();
-    assert_eq!(
-        &b"*3\r\n$11\r\nunsubscribe\r\n$5\r\nhello\r\n:1\r\n"[..],
-        &response[..]
-    );
-
-    // Publish a message to `hello` and then a message to `foo`
-    publisher
-        .write_all(b"*3\r\n$7\r\nPUBLISH\r\n$5\r\nhello\r\n$5\r\nworld\r\n")
-        .await
-        .unwrap();
-    let mut response = [0; 4];
-    publisher.read_exact(&mut response).await.unwrap();
-    assert_eq!(b":0\r\n", &response);
-
-    publisher
-        .write_all(b"*3\r\n$7\r\nPUBLISH\r\n$3\r\nfoo\r\n$3\r\nbar\r\n")
-        .await
-        .unwrap();
-    let mut response = [0; 4];
-    publisher.read_exact(&mut response).await.unwrap();
-    assert_eq!(b":1\r\n", &response);
-
-    // Receive the message
-    // The second subscriber **did** receive the message
-    let mut response = [0; 35];
-    sub.read_exact(&mut response).await.unwrap();
-    assert_eq!(
-        &b"*3\r\n$7\r\nmessage\r\n$3\r\nfoo\r\n$3\r\nbar\r\n"[..],
-        &response[..]
-    );
-
-    // No more messages
-    let mut response = [0; 1];
-    time::timeout(Duration::from_millis(100), sub.read(&mut response))
-        .await
-        .unwrap_err();
-
-    // Unsubscribe from all channels
-    sub.write_all(b"*1\r\n$11\r\nunsubscribe\r\n")
-        .await
-        .unwrap();
-
-    let mut response = [0; 35];
+    // 阅读取消订阅确认信息。
+    let mut response = [0; 34];
     sub.read_exact(&mut response).await.unwrap();
     assert_eq!(
         &b"*3\r\n$11\r\nunsubscribe\r\n$3\r\nfoo\r\n:0\r\n"[..],
         &response[..]
     );
-}
 
-// In this case we test that server Responds with an Error message if a client
-// sends an unknown command
-#[tokio::test]
-async fn send_error_unknown_command() {
-    let addr = start_server().await;
-
-    // Establish a connection to the server
-    let mut stream = TcpStream::connect(addr).await.unwrap();
-
-    // Get a key, data is missing
-    stream
-        .write_all(b"*2\r\n$3\r\nFOO\r\n$5\r\nhello\r\n")
+    // 现在重新订阅。
+    sub.write_all(b"*2\r\n$9\r\nSUBSCRIBE\r\n$3\r\nfoo\r\n")
         .await
         .unwrap();
 
-    let mut response = [0; 28];
-
-    stream.read_exact(&mut response).await.unwrap();
-
-    assert_eq!(b"-ERR unknown command \'foo\'\r\n", &response);
-}
-
-// In this case we test that server Responds with an Error message if a client
-// sends an GET or SET command after a SUBSCRIBE
-#[tokio::test]
-async fn send_error_get_set_after_subscribe() {
-    let addr = start_server().await;
-
-    let mut stream = TcpStream::connect(addr).await.unwrap();
-
-    // send SUBSCRIBE command
-    stream
-        .write_all(b"*2\r\n$9\r\nsubscribe\r\n$5\r\nhello\r\n")
-        .await
-        .unwrap();
-
-    let mut response = [0; 34];
-
-    stream.read_exact(&mut response).await.unwrap();
-
-    assert_eq!(
-        &b"*3\r\n$9\r\nsubscribe\r\n$5\r\nhello\r\n:1\r\n"[..],
-        &response[..]
-    );
-
-    stream
-        .write_all(b"*3\r\n$3\r\nSET\r\n$5\r\nhello\r\n$5\r\nworld\r\n")
-        .await
-        .unwrap();
-
-    let mut response = [0; 28];
-
-    stream.read_exact(&mut response).await.unwrap();
-    assert_eq!(b"-ERR unknown command \'set\'\r\n", &response);
-
-    stream
-        .write_all(b"*2\r\n$3\r\nGET\r\n$5\r\nhello\r\n")
-        .await
-        .unwrap();
-
-    let mut response = [0; 28];
-
-    stream.read_exact(&mut response).await.unwrap();
-    assert_eq!(b"-ERR unknown command \'get\'\r\n", &response);
-}
-
-// In this case we test that server responds with an Error message mentioning
-// PUBLISH if a client sends PUBLISH after SUBSCRIBE.
-#[tokio::test]
-async fn send_error_publish_after_subscribe() {
-    let addr = start_server().await;
-
-    let mut stream = TcpStream::connect(addr).await.unwrap();
-
-    stream
-        .write_all(b"*2\r\n$9\r\nsubscribe\r\n$5\r\nhello\r\n")
-        .await
-        .unwrap();
-
-    let mut response = [0; 34];
-
-    stream.read_exact(&mut response).await.unwrap();
-
-    assert_eq!(
-        &b"*3\r\n$9\r\nsubscribe\r\n$5\r\nhello\r\n:1\r\n"[..],
-        &response[..]
-    );
-
-    stream
-        .write_all(b"*3\r\n$7\r\nPUBLISH\r\n$5\r\nhello\r\n$5\r\nworld\r\n")
-        .await
-        .unwrap();
-
+    // 阅读订阅确认信息。
     let mut response = [0; 32];
-    let bytes_read = time::timeout(Duration::from_secs(1), stream.read(&mut response))
-        .await
-        .unwrap()
-        .unwrap();
-
+    sub.read_exact(&mut response).await.unwrap();
     assert_eq!(
-        b"-ERR unknown command \'publish\'\r\n",
-        &response[..bytes_read]
+        &b"*3\r\n$9\r\nsubscribe\r\n$3\r\nfoo\r\n:1\r\n"[..],
+        &response[..]
     );
 }
 

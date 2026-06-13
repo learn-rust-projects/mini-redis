@@ -1,10 +1,9 @@
-//! mini-redis server.
+//! mini-redis 服务器。
 //!
-//! This file is the entry point for the server implemented in the library. It
-//! performs command line parsing and passes the arguments on to
-//! `mini_redis::server`.
+//! 这个文件是库中实现的服务器的入口点。
+//! 它执行命令行解析并将参数传递给 `mini_redis::server`。
 //!
-//! The `clap` crate is used for parsing arguments.
+//! `clap` crate 用于解析参数。
 
 use mini_redis::{server, DEFAULT_PORT};
 
@@ -13,17 +12,17 @@ use tokio::net::TcpListener;
 use tokio::signal;
 
 #[cfg(feature = "otel")]
-// To be able to set the XrayPropagator
+// 为了能够设置 XrayPropagator。
 use opentelemetry::global;
 #[cfg(feature = "otel")]
-// To configure certain options such as sampling rate
+// 为了配置某些选项，如采样率。
 use opentelemetry::sdk::trace as sdktrace;
 #[cfg(feature = "otel")]
-// For passing along the same XrayId across services
+// 为了跨服务传递相同的 XrayId。
 use opentelemetry_aws::trace::XrayPropagator;
 #[cfg(feature = "otel")]
-// The `Ext` traits are to allow the Registry to accept the
-// OpenTelemetry-specific types (such as `OpenTelemetryLayer`)
+// `Ext` trait 用于允许 Registry 接受 OpenTelemetry 特定的类型
+// （例如 `OpenTelemetryLayer`）。
 use tracing_subscriber::{
     fmt, layer::SubscriberExt, util::SubscriberInitExt, util::TryInitError, EnvFilter,
 };
@@ -35,7 +34,7 @@ pub async fn main() -> mini_redis::Result<()> {
     let cli = Cli::parse();
     let port = cli.port.unwrap_or(DEFAULT_PORT);
 
-    // Bind a TCP listener
+    // 绑定一个 TCP 监听器。
     let listener = TcpListener::bind(&format!("127.0.0.1:{port}")).await?;
 
     server::run(listener, signal::ctrl_c()).await;
@@ -52,16 +51,16 @@ struct Cli {
 
 #[cfg(not(feature = "otel"))]
 fn set_up_logging() -> mini_redis::Result<()> {
-    // See https://docs.rs/tracing for more info
+    // 有关更多信息，请参见 https://docs.rs/tracing。
     tracing_subscriber::fmt::try_init()
 }
 
 #[cfg(feature = "otel")]
 fn set_up_logging() -> Result<(), TryInitError> {
-    // Set the global propagator to X-Ray propagator
-    // Note: If you need to pass the x-amzn-trace-id across services in the same trace,
-    // you will need this line. However, this requires additional code not pictured here.
-    // For a full example using hyper, see:
+    // 将全局传播器设置为 X-Ray 传播器。
+    // 注意：如果需要在同一跟踪中跨服务传递 x-amzn-trace-id，
+    // 则需要这一行。然而，这需要此处未展示的额外代码。
+    // 关于使用 hyper 的完整示例，请参见:
     // https://github.com/open-telemetry/opentelemetry-rust/blob/v0.19.0/examples/aws-xray/src/server.rs#L14-L26
     global::set_text_map_propagator(XrayPropagator::default());
 
@@ -71,21 +70,19 @@ fn set_up_logging() -> Result<(), TryInitError> {
         .with_trace_config(
             sdktrace::config()
                 .with_sampler(sdktrace::Sampler::AlwaysOn)
-                // Needed in order to convert the trace IDs into an Xray-compatible format
+                // 需要将跟踪 ID 转换为 Xray 兼容的格式。
                 .with_id_generator(sdktrace::XrayIdGenerator::default()),
         )
         .install_simple()
         .expect("Unable to initialize OtlpPipeline");
 
-    // Create a tracing layer with the configured tracer
+    // 使用配置的跟踪器创建一个 tracing 层。
     let opentelemetry = tracing_opentelemetry::layer().with_tracer(tracer);
 
-    // Parse an `EnvFilter` configuration from the `RUST_LOG`
-    // environment variable.
+    // 从 `RUST_LOG` 环境变量中解析 `EnvFilter` 配置。
     let filter = EnvFilter::from_default_env();
 
-    // Use the tracing subscriber `Registry`, or any other subscriber
-    // that impls `LookupSpan`
+    // 使用 tracing subscriber `Registry` 或任何其他实现了 `LookupSpan` 的 subscriber。
     tracing_subscriber::registry()
         .with(opentelemetry)
         .with(filter)

@@ -27,65 +27,63 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Command {
     Ping {
-        /// Message to ping
+        /// 要 ping 的消息。
         msg: Option<Bytes>,
     },
-    /// Get the value of key.
+    /// 获取键的值。
     Get {
-        /// Name of key to get
+        /// 要获取的键名。
         key: String,
     },
-    /// Set key to hold the string value.
+    /// 设置键为给定的字符串值。
     Set {
-        /// Name of key to set
+        /// 要设置的键名。
         key: String,
 
-        /// Value to set.
+        /// 要设置的值。
         value: Bytes,
 
-        /// Expire the value after specified amount of time
+        /// 在指定的时间后使值过期。
         #[arg(value_parser = duration_from_ms_str)]
         expires: Option<Duration>,
     },
-    ///  Publisher to send a message to a specific channel.
+    /// 发布者向特定频道发送消息。
     Publish {
-        /// Name of channel
+        /// 频道名称。
         channel: String,
 
-        /// Message to publish
+        /// 要发布的消息。
         message: Bytes,
     },
-    /// Subscribe a client to a specific channel or channels.
+    /// 订阅客户端到特定频道或频道列表。
     Subscribe {
-        /// Specific channel or channels
+        /// 特定的频道或频道列表。
         channels: Vec<String>,
     },
 }
 
-/// Entry point for CLI tool.
+/// CLI 工具的入口点。
 ///
-/// The `[tokio::main]` annotation signals that the Tokio runtime should be
-/// started when the function is called. The body of the function is executed
-/// within the newly spawned runtime.
+/// `[tokio::main]` 注解表示在函数被调用时应启动 Tokio 运行时。
+/// 函数体在新生成的运行时内部执行。
 ///
-/// `flavor = "current_thread"` is used here to avoid spawning background
-/// threads. The CLI tool use case benefits more by being lighter instead of
-/// multi-threaded.
+/// 这里使用 `flavor = "current_thread"` 来避免生成后台线程。
+/// CLI 工具的使用场景更适合轻量级而非多线程。
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> mini_redis::Result<()> {
-    // Enable logging
+    // 启用日志记录。
     tracing_subscriber::fmt::try_init()?;
 
-    // Parse command line arguments
+    // 解析命令行参数。
     let cli = Cli::parse();
 
-    // Get the remote address to connect to
+    // 获取要连接的远程地址。
     let addr = format!("{}:{}", cli.host, cli.port);
 
-    // Establish a connection
+    // 建立连接。
     let mut client = Client::connect(&addr).await?;
 
-    // Process the requested command
+    // 处理请求的命令。
     match cli.command {
         Command::Ping { msg } => {
             let value = client.ping(msg).await?;
@@ -132,7 +130,7 @@ async fn main() -> mini_redis::Result<()> {
             }
             let mut subscriber = client.subscribe(channels).await?;
 
-            // await messages on channels
+            // 等待频道上的消息。
             while let Some(msg) = subscriber.next_message().await? {
                 println!(
                     "got message from the channel: {}; message = {:?}",

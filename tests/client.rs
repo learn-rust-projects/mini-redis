@@ -3,8 +3,7 @@ use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
 
-/// A PING PONG test without message provided.
-/// It should return "PONG".
+/// 不提供消息的 PING PONG 测试。应返回 "PONG"。
 #[tokio::test]
 async fn ping_pong_without_message() {
     let (addr, _) = start_server().await;
@@ -14,8 +13,7 @@ async fn ping_pong_without_message() {
     assert_eq!(b"PONG", &pong[..]);
 }
 
-/// A PING PONG test with message provided.
-/// It should return the message.
+/// 提供消息的 PING PONG 测试。应返回该消息。
 #[tokio::test]
 async fn ping_pong_with_message() {
     let (addr, _) = start_server().await;
@@ -25,9 +23,8 @@ async fn ping_pong_with_message() {
     assert_eq!("你好世界".as_bytes(), &pong[..]);
 }
 
-/// A basic "hello world" style test. A server instance is started in a
-/// background task. A client instance is then established and set and get
-/// commands are sent to the server. The response is then evaluated
+/// 一个基本的"hello world"风格的测试。在后台任务中启动一个服务器实例。
+/// 然后建立客户端实例，并向服务器发送 set 和 get 命令。然后评估响应。
 #[tokio::test]
 async fn key_value_get_set() {
     let (addr, _) = start_server().await;
@@ -39,8 +36,7 @@ async fn key_value_get_set() {
     assert_eq!(b"world", &value[..])
 }
 
-/// similar to the "hello world" style test, But this time
-/// a single channel subscription will be tested instead
+/// 类似于"hello world"风格的测试，但这次将测试单个频道订阅。
 #[tokio::test]
 async fn receive_message_subscribed_channel() {
     let (addr, _) = start_server().await;
@@ -58,7 +54,7 @@ async fn receive_message_subscribed_channel() {
     assert_eq!(b"world", &message.content[..])
 }
 
-/// test that a client gets messages from multiple subscribed channels
+/// 测试客户端是否从多个订阅频道接收消息。
 #[tokio::test]
 async fn receive_message_multiple_subscribed_channels() {
     let (addr, _) = start_server().await;
@@ -88,8 +84,8 @@ async fn receive_message_multiple_subscribed_channels() {
     assert_eq!(b"howdy?", &message2.content[..])
 }
 
-/// test that a client accurately removes its own subscribed channel list
-/// when unsubscribing to all subscribed channels by submitting an empty vec
+/// 测试客户端在通过提交空 vec 取消订阅所有频道时，
+/// 是否能准确移除自己的订阅频道列表。
 #[tokio::test]
 async fn unsubscribes_from_channels() {
     let (addr, _) = start_server().await;

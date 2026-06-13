@@ -1,5 +1,4 @@
-//! Provides a type representing a Redis protocol frame as well as utilities for
-//! parsing frames from a byte array.
+//! 提供表示 Redis 协议帧的类型以及用于从字节数组解析帧的工具。
 
 use bytes::{Buf, Bytes};
 use std::convert::TryInto;
@@ -8,7 +7,7 @@ use std::io::Cursor;
 use std::num::TryFromIntError;
 use std::string::FromUtf8Error;
 
-/// A frame in the Redis protocol.
+/// Redis 协议中的帧。
 #[derive(Clone, Debug)]
 pub enum Frame {
     Simple(String),
@@ -21,24 +20,24 @@ pub enum Frame {
 
 #[derive(Debug)]
 pub enum Error {
-    /// Not enough data is available to parse a message
+    /// 没有足够的数据可用于解析消息。
     Incomplete,
 
-    /// Invalid message encoding
+    /// 无效的消息编码。
     Other(crate::Error),
 }
 
 impl Frame {
-    /// Returns an empty array
+    /// 返回一个空数组。
     pub(crate) fn array() -> Frame {
         Frame::Array(vec![])
     }
 
-    /// Push a "bulk" frame into the array. `self` must be an Array frame.
+    /// 将一个"bulk"帧推入数组。`self` 必须是 Array 帧。
     ///
     /// # Panics
     ///
-    /// panics if `self` is not an array
+    /// 如果 `self` 不是数组则 panic。
     pub(crate) fn push_bulk(&mut self, bytes: Bytes) {
         match self {
             Frame::Array(vec) => {
@@ -48,11 +47,11 @@ impl Frame {
         }
     }
 
-    /// Push an "integer" frame into the array. `self` must be an Array frame.
+    /// 将一个"integer"帧推入数组。`self` 必须是 Array 帧。
     ///
     /// # Panics
     ///
-    /// panics if `self` is not an array
+    /// 如果 `self` 不是数组则 panic。
     pub(crate) fn push_int(&mut self, value: u64) {
         match self {
             Frame::Array(vec) => {
@@ -62,7 +61,7 @@ impl Frame {
         }
     }
 
-    /// Checks if an entire message can be decoded from `src`
+    /// 检查是否可以从 `src` 解码出完整的消息。
     pub fn check(src: &mut Cursor<&[u8]>) -> Result<(), Error> {
         match get_u8(src)? {
             b'+' => {
@@ -78,12 +77,12 @@ impl Frame {
                 Ok(())
             }
             b'$' => {
-                // Bulk strings in the RESP protocol.
+                // RESP 协议中的 bulk 字符串。
                 //
-                // Format: $<length>\r\n<data>\r\n
+                // 格式: $<长度>\r\n<数据>\r\n
                 //
-                // Special case: $-1\r\n represents a Null value.
-                // Validates that the frame conforms to RESP protocol.
+                // 特例: $-1\r\n 表示 Null 值。
+                // 验证帧是否符合 RESP 协议格式。
                 if b'-' == peek_u8(src)? {
                     let line = get_line(src)?;
                     if line != b"-1" {
@@ -91,10 +90,10 @@ impl Frame {
                     }
                     Ok(())
                 } else {
-                    // Read the bulk string
+                    // 读取 bulk 字符串。
                     let len: usize = get_decimal(src)?.try_into()?;
 
-                    // skip that number of bytes + 2 (\r\n).
+                    // 跳过那数量的字节 + 2 (\r\n)。
                     skip(src, len + 2)
                 }
             }
@@ -111,23 +110,23 @@ impl Frame {
         }
     }
 
-    /// The message has already been validated with `check`.
+    /// 消息已经通过 `check` 验证。
     pub fn parse(src: &mut Cursor<&[u8]>) -> Result<Frame, Error> {
         match get_u8(src)? {
             b'+' => {
-                // Read the line and convert it to `Vec<u8>`
+                // 读取这一行并将其转换为 `Vec<u8>`。
                 let line = get_line(src)?.to_vec();
 
-                // Convert the line to a String
+                // 将这一行转换为 String。
                 let string = String::from_utf8(line)?;
 
                 Ok(Frame::Simple(string))
             }
             b'-' => {
-                // Read the line and convert it to `Vec<u8>`
+                // 读取这一行并将其转换为 `Vec<u8>`。
                 let line = get_line(src)?.to_vec();
 
-                // Convert the line to a String
+                // 将这一行转换为 String。
                 let string = String::from_utf8(line)?;
 
                 Ok(Frame::Error(string))
@@ -146,7 +145,7 @@ impl Frame {
 
                     Ok(Frame::Null)
                 } else {
-                    // Read the bulk string
+                    // 读取 bulk 字符串。
                     let len = get_decimal(src)?.try_into()?;
                     let n = len + 2;
 
@@ -156,7 +155,7 @@ impl Frame {
 
                     let data = Bytes::copy_from_slice(&src.chunk()[..len]);
 
-                    // skip that number of bytes + 2 (\r\n).
+                    // 跳过那数量的字节 + 2 (\r\n)。
                     skip(src, n)?;
 
                     Ok(Frame::Bulk(data))
@@ -176,7 +175,7 @@ impl Frame {
         }
     }
 
-    /// Converts the frame to an "unexpected frame" error
+    /// 将帧转换为"意外的帧"错误。
     pub(crate) fn to_error(&self) -> crate::Error {
         format!("unexpected frame: {self}").into()
     }
@@ -208,7 +207,7 @@ impl fmt::Display for Frame {
             Frame::Array(parts) => {
                 for (i, part) in parts.iter().enumerate() {
                     if i > 0 {
-                        // use space as the array element display separator
+                        // 使用空格作为数组元素显示分隔符。
                         write!(fmt, " ")?;
                     }
 
@@ -246,7 +245,7 @@ fn skip(src: &mut Cursor<&[u8]>, n: usize) -> Result<(), Error> {
     Ok(())
 }
 
-/// Read a new-line terminated decimal
+/// 读取一个换行符终止的十进制数。
 fn get_decimal(src: &mut Cursor<&[u8]>) -> Result<u64, Error> {
     use atoi::atoi;
 
@@ -255,19 +254,19 @@ fn get_decimal(src: &mut Cursor<&[u8]>) -> Result<u64, Error> {
     atoi::<u64>(line).ok_or_else(|| "protocol error; invalid frame format".into())
 }
 
-/// Find a line
+/// 查找一行。
 fn get_line<'a>(src: &mut Cursor<&'a [u8]>) -> Result<&'a [u8], Error> {
-    // Scan the bytes directly
+    // 直接扫描字节。
     let start = src.position() as usize;
-    // Scan to the second to last byte
+    // 扫描到倒数第二个字节。
     let end = src.get_ref().len() - 1;
 
     for i in start..end {
         if src.get_ref()[i] == b'\r' && src.get_ref()[i + 1] == b'\n' {
-            // We found a line, update the position to be *after* the \n
+            // 我们找到了一行，更新位置到 \n 之后。
             src.set_position((i + 2) as u64);
 
-            // Return the line
+            // 返回这一行。
             return Ok(&src.get_ref()[start..i]);
         }
     }

@@ -1,17 +1,17 @@
-//! Publish to a redis channel example.
+//! 向 Redis 频道发布消息的示例。
 //!
-//! A simple client that connects to a mini-redis server, and
-//! publishes a message on `foo` channel
+//! 一个简单的客户端，连接到 mini-redis 服务器，
+//! 并在 `foo` 频道上发布一条消息。
 //!
-//! You can test this out by running:
+//! 你可以通过以下方式测试:
 //!
 //!     cargo run --bin mini-redis-server
 //!
-//! Then in another terminal run:
+//! 然后在另一个终端中运行:
 //!
 //!     cargo run --example sub
 //!
-//! And then in another terminal run:
+//! 然后在另一个终端中运行:
 //!
 //!     cargo run --example pub
 
@@ -21,10 +21,10 @@ use mini_redis::{clients::Client, Result};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Open a connection to the mini-redis address.
+    // 打开到 mini-redis 地址的连接。
     let mut client = Client::connect("127.0.0.1:6379").await?;
 
-    // publish message `bar` on channel foo
+    // 在 foo 频道上发布消息 `bar`。
     client.publish("foo", "bar".into()).await?;
 
     Ok(())

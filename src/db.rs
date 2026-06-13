@@ -6,105 +6,90 @@ use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, Mutex};
 use tracing::debug;
 
-/// A wrapper around a `Db` instance. This exists to allow orderly cleanup
-/// of the `Db` by signalling the background purge task to shut down when
-/// this struct is dropped.
+/// 一个 `Db` 实例的包装器。存在是为了实现有序清理，
+/// 当此结构体被丢弃时，通过通知后台清理任务关闭。
 #[derive(Debug)]
 pub(crate) struct DbDropGuard {
-    /// The `Db` instance that will be shut down when this `DbDropGuard` struct
-    /// is dropped.
+    /// 当此 `DbDropGuard` 结构体被丢弃时将关闭的 `Db` 实例。
     db: Db,
 }
 
-/// Server state shared across all connections.
+/// 所有连接共享的服务器状态。
 ///
-/// `Db` contains a `HashMap` storing the key/value data and all
-/// `broadcast::Sender` values for active pub/sub channels.
+/// `Db` 包含一个存储键/值数据的 `HashMap` 以及所有活动 pub/sub 通道的
+/// `broadcast::Sender` 值。
 ///
-/// A `Db` instance is a handle to shared state. Cloning `Db` is shallow and
-/// only incurs an atomic ref count increment.
+/// `Db` 实例是共享状态的句柄。克隆 `Db` 是浅拷贝，
+/// 只增加原子引用计数。
 ///
-/// When a `Db` value is created, a background task is spawned. This task is
-/// used to expire values after the requested duration has elapsed. The task
-/// runs until all instances of `Db` are dropped, at which point the task
-/// terminates.
+/// 当创建 `Db` 值时，会生成一个后台任务。该任务用于
+/// 在请求的持续时间过后使值过期。该任务一直运行到所有 `Db` 实例
+/// 都被丢弃，此时任务终止。
 #[derive(Debug, Clone)]
 pub(crate) struct Db {
-    /// Handle to shared state. The background task will also have an
-    /// `Arc<Shared>`.
+    /// 共享状态的句柄。后台任务也会有一个 `Arc<Shared>`。
     shared: Arc<Shared>,
 }
 
 #[derive(Debug)]
 struct Shared {
-    /// The shared state is guarded by a mutex. This is a `std::sync::Mutex` and
-    /// not a Tokio mutex. This is because there are no asynchronous operations
-    /// being performed while holding the mutex. Additionally, the critical
-    /// sections are very small.
+    /// 共享状态由互斥锁保护。这里使用 `std::sync::Mutex` 而不是
+    /// Tokio 互斥锁，因为在持有锁期间没有执行异步操作。
+    /// 此外，临界区非常小。
     ///
-    /// A Tokio mutex is mostly intended to be used when locks need to be held
-    /// across `.await` yield points. All other cases are **usually** best
-    /// served by a std mutex. If the critical section does not include any
-    /// async operations but is long (CPU intensive or performing blocking
-    /// operations), then the entire operation, including waiting for the mutex,
-    /// is considered a "blocking" operation and `tokio::task::spawn_blocking`
-    /// should be used.
+    /// Tokio 互斥锁主要用于需要在 `.await` 暂停点跨越锁的持有期的情况。
+    /// 其他情况通常最好使用 std 互斥锁。如果临界区不包含任何异步操作
+    /// 但耗时较长（CPU 密集型或执行阻塞操作），则整个操作（包括等待互斥锁）
+    /// 被认为是"阻塞"操作，应使用 `tokio::task::spawn_blocking`。
     state: Mutex<State>,
 
-    /// Notifies the background task handling entry expiration. The background
-    /// task waits on this to be notified, then checks for expired values or the
-    /// shutdown signal.
+    /// 通知处理条目过期的后台任务。后台任务在此等待通知，
+    /// 然后检查过期值或关闭信号。
     background_task: Notify,
 }
 
 #[derive(Debug)]
 struct State {
-    /// The key-value data. We are not trying to do anything fancy so a
-    /// `std::collections::HashMap` works fine.
+    /// 键值数据。我们不打算做任何花哨的事情，所以
+    /// `std::collections::HashMap` 就足够了。
     entries: HashMap<String, Entry>,
 
-    /// The pub/sub key-space. Redis uses a **separate** key space for key-value
-    /// and pub/sub. `mini-redis` handles this by using a separate `HashMap`.
+    /// pub/sub 键空间。Redis 使用 **独立** 的键空间来存储键值
+    /// 和 pub/sub。`mini-redis` 通过使用独立的 `HashMap` 来处理。
     pub_sub: HashMap<String, broadcast::Sender<Bytes>>,
 
-    /// Tracks key TTLs.
+    /// 跟踪键的 TTL。
     ///
-    /// A `BTreeSet` is used to maintain expirations sorted by when they expire.
-    /// This allows the background task to iterate this map to find the value
-    /// expiring next.
+    /// 使用 `BTreeSet` 来维护按过期时间排序的到期记录。
+    /// 这允许后台任务迭代此映射以查找下一个过期的值。
     ///
-    /// While highly unlikely, it is possible for more than one expiration to be
-    /// created for the same instant. Because of this, the `Instant` is
-    /// insufficient for the key. A unique key (`String`) is used to
-    /// break these ties.
+    /// 虽然极不可能，但可能在同一个时刻创建多个到期记录。
+    /// 因此，`Instant` 不足以作为键。使用唯一键（`String`）来打破这些平局。
     expirations: BTreeSet<(Instant, String)>,
 
-    /// True when the Db instance is shutting down. This happens when all `Db`
-    /// values drop. Setting this to `true` signals to the background task to
-    /// exit.
+    /// 当所有 `Db` 值都丢弃时，设置为 true。设置此值为 `true` 表示
+    /// 后台任务退出。当 Db 实例关闭时为真。
     shutdown: bool,
 }
 
-/// Entry in the key-value store
+/// 键值存储中的条目
 #[derive(Debug)]
 struct Entry {
-    /// Stored data
+    /// 存储的数据
     data: Bytes,
 
-    /// Instant at which the entry expires and should be removed from the
-    /// database.
+    /// 条目过期并从数据库中删除的时刻。
     expires_at: Option<Instant>,
 }
 
 impl DbDropGuard {
-    /// Create a new `DbDropGuard`, wrapping a `Db` instance. When this is dropped
-    /// the `Db`'s purge task will be shut down.
+    /// 创建一个新的 `DbDropGuard`，包装一个 `Db` 实例。当这个被丢弃时，
+    /// `Db` 的清理任务将被关闭。
     pub(crate) fn new() -> DbDropGuard {
         DbDropGuard { db: Db::new() }
     }
 
-    /// Get the shared database. Internally, this is an
-    /// `Arc`, so a clone only increments the ref count.
+    /// 获取共享数据库。内部是一个 `Arc`，因此克隆只增加引用计数。
     pub(crate) fn db(&self) -> Db {
         self.db.clone()
     }
@@ -112,14 +97,14 @@ impl DbDropGuard {
 
 impl Drop for DbDropGuard {
     fn drop(&mut self) {
-        // Signal the 'Db' instance to shut down the task that purges expired keys
+        // 通知 `Db` 实例关闭负责清理过期键的任务。
         self.db.shutdown_purge_task();
     }
 }
 
 impl Db {
-    /// Create a new, empty, `Db` instance. Allocates shared state and spawns a
-    /// background task to manage key expiration.
+    /// 创建新的空 `Db` 实例。分配共享状态并生成一个
+    /// 后台任务来管理键过期。
     pub(crate) fn new() -> Db {
         let shared = Arc::new(Shared {
             state: Mutex::new(State {
@@ -131,47 +116,43 @@ impl Db {
             background_task: Notify::new(),
         });
 
-        // Start the background task.
+        // 启动后台任务。
         tokio::spawn(purge_expired_tasks(shared.clone()));
 
         Db { shared }
     }
 
-    /// Get the value associated with a key.
+    /// 获取与键关联的值。
     ///
-    /// Returns `None` if there is no value associated with the key. This may be
-    /// due to never having assigned a value to the key or a previously assigned
-    /// value expired.
+    /// 如果没有与该键关联的值，返回 `None`。可能是因为从未给键赋值，
+    /// 或者之前赋的值已过期。
     pub(crate) fn get(&self, key: &str) -> Option<Bytes> {
-        // Acquire the lock, get the entry and clone the value.
+        // 获取锁，获取条目并克隆值。
         //
-        // Because data is stored using `Bytes`, a clone here is a shallow
-        // clone. Data is not copied.
+        // 因为数据使用 `Bytes` 存储，这里的克隆是浅克隆。
+        // 数据不会被复制。
         let state = self.shared.state.lock().unwrap();
         state.entries.get(key).map(|entry| entry.data.clone())
     }
 
-    /// Set the value associated with a key along with an optional expiration
-    /// Duration.
+    /// 设置与键关联的值，以及与可选的过期 Duration。
     ///
-    /// If a value is already associated with the key, it is removed.
+    /// 如果键已经关联了一个值，该值会被移除。
     pub(crate) fn set(&self, key: String, value: Bytes, expire: Option<Duration>) {
         let mut state = self.shared.state.lock().unwrap();
 
-        // If this `set` becomes the key that expires **next**, the background
-        // task needs to be notified so it can update its state.
+        // 如果这个 `set` 成为 **下一个** 过期的键，则需要通知
+        // 后台任务以更新其状态。
         //
-        // Whether or not the task needs to be notified is computed during the
-        // `set` routine.
+        // 在 `set` 过程中计算是否需要通知任务。
         let mut notify = false;
 
         let expires_at = expire.map(|duration| {
-            // `Instant` at which the key expires.
+            // 键过期的 `Instant`。
             let when = Instant::now() + duration;
 
-            // Only notify the worker task if the newly inserted expiration is the
-            // **next** key to evict. In this case, the worker needs to be woken up
-            // to update its state.
+            // 仅当新插入的过期时间是 **下一个** 要驱逐的键时才
+            // 通知工作线程。在这种情况下，需要唤醒工作线程以更新其状态。
             notify = state
                 .next_expiration()
                 .map(|expiration| expiration > when)
@@ -180,7 +161,7 @@ impl Db {
             when
         });
 
-        // Insert the entry into the `HashMap`.
+        // 将条目插入 `HashMap`。
         let prev = state.entries.insert(
             key.clone(),
             Entry {
@@ -189,61 +170,54 @@ impl Db {
             },
         );
 
-        // If there was a value previously associated with the key **and** it
-        // had an expiration time. The associated entry in the `expirations` map
-        // must also be removed. This avoids leaking data.
+        // 如果以前有值与这个键关联 **并且** 它有过期时间。
+        // `expirations` 映射中的关联条目也必须被移除。这避免了数据泄漏。
         if let Some(prev) = prev {
             if let Some(when) = prev.expires_at {
-                // clear expiration
+                // 清除过期记录。
                 state.expirations.remove(&(when, key.clone()));
             }
         }
 
-        // Track the expiration. If we insert before remove that will cause bug
-        // when current `(when, key)` equals prev `(when, key)`. Remove then insert
-        // can avoid this.
+        // 跟踪过期时间。如果我们在移除之前插入，当当前 `(when, key)`
+        // 等于之前的 `(when, key)` 时会导致错误。先移除后插入可以避免此问题。
         if let Some(when) = expires_at {
             state.expirations.insert((when, key));
         }
 
-        // Release the mutex before notifying the background task. This helps
-        // reduce contention by avoiding the background task waking up only to
-        // be unable to acquire the mutex due to this function still holding it.
+        // 在通知后台任务之前释放互斥锁。这有助于减少竞争，
+        // 因为后台任务被唤醒后可能因为此函数仍持有锁而无法获取锁。
         drop(state);
 
         if notify {
-            // Finally, only notify the background task if it needs to update
-            // its state to reflect a new expiration.
+            // 最后，仅当后台任务需要更新其状态以反映新的过期时间时
+            // 才通知它。
             self.shared.background_task.notify_one();
         }
     }
 
-    /// Returns a `Receiver` for the requested channel.
+    /// 返回请求的频道的 `Receiver`。
     ///
-    /// The returned `Receiver` is used to receive values broadcast by `PUBLISH`
-    /// commands.
+    /// 返回的 `Receiver` 用于接收由 `PUBLISH` 命令广播的值。
     pub(crate) fn subscribe(&self, key: String) -> broadcast::Receiver<Bytes> {
         use std::collections::hash_map::Entry;
 
-        // Acquire the mutex
+        // 获取互斥锁。
         let mut state = self.shared.state.lock().unwrap();
 
-        // If there is no entry for the requested channel, then create a new
-        // broadcast channel and associate it with the key. If one already
-        // exists, return an associated receiver.
+        // 如果请求的频道没有条目，则创建一个新的广播通道
+        // 并将其与键关联。如果已经存在，则返回关联的接收器。
         match state.pub_sub.entry(key) {
             Entry::Occupied(e) => e.get().subscribe(),
             Entry::Vacant(e) => {
-                // No broadcast channel exists yet, so create one.
+                // 广播通道尚不存在，因此创建一个。
                 //
-                // The channel is created with a capacity of `1024` messages. A
-                // message is stored in the channel until **all** subscribers
-                // have seen it. This means that a slow subscriber could result
-                // in messages being held indefinitely.
+                // 通道容量为 `1024` 条消息。一条消息会一直存储在
+                // 通道中，直到 **所有** 订阅者都看到了它。这意味着
+                // 慢速订阅者可能导致消息被无限期保存。
                 //
-                // When the channel's capacity fills up, publishing will result
-                // in old messages being dropped. This prevents slow consumers
-                // from blocking the entire system.
+                // 当通道容量满时，发布将导致旧消息被丢弃。这可以防止
+                // 慢速消费者阻塞整个系统。
                 let (tx, rx) = broadcast::channel(1024);
                 e.insert(tx);
                 rx
@@ -251,69 +225,63 @@ impl Db {
         }
     }
 
-    /// Publish a message to the channel. Returns the number of subscribers
-    /// listening on the channel.
+    /// 向频道发布一条消息。返回监听该频道的订阅者数量。
     pub(crate) fn publish(&self, key: &str, value: Bytes) -> usize {
         let state = self.shared.state.lock().unwrap();
 
         state
             .pub_sub
             .get(key)
-            // On a successful message send on the broadcast channel, the number
-            // of subscribers is returned. An error indicates there are no
-            // receivers, in which case, `0` should be returned.
+            // 在广播通道上成功发送消息时，返回订阅者数量。
+            // 错误表示没有接收者，此时应返回 `0`。
             .map(|tx| tx.send(value).unwrap_or(0))
-            // If there is no entry for the channel key, then there are no
-            // subscribers. In this case, return `0`.
+            // 如果频道键没有条目，则没有订阅者。此时返回 `0`。
             .unwrap_or(0)
     }
 
-    /// Signals the purge background task to shut down. This is called by the
-    /// `DbShutdown`s `Drop` implementation.
+    /// 通知清理后台任务关闭。由 `DbShutdown` 的 `Drop` 实现调用。
     fn shutdown_purge_task(&self) {
-        // The background task must be signaled to shut down. This is done by
-        // setting `State::shutdown` to `true` and signalling the task.
+        // 必须通知后台任务关闭。通过设置 `State::shutdown` 为 `true`
+        // 并通知任务来实现。
         let mut state = self.shared.state.lock().unwrap();
         state.shutdown = true;
 
-        // Drop the lock before signalling the background task. This helps
-        // reduce lock contention by ensuring the background task doesn't
-        // wake up only to be unable to acquire the mutex.
+        // 在通知后台任务之前释放锁。这有助于减少锁竞争，
+        // 确保后台任务不会被唤醒后却无法获取互斥锁。
         drop(state);
         self.shared.background_task.notify_one();
     }
 }
 
 impl Shared {
-    /// Purge all expired keys and return the `Instant` at which the **next**
-    /// key will expire. The background task will sleep until this instant.
+    /// 清除所有过期的键，并返回 **下一个** 键过期的 `Instant`。
+    /// 后台任务将休眠直到此时刻。
     fn purge_expired_keys(&self) -> Option<Instant> {
         let mut state = self.state.lock().unwrap();
 
         if state.shutdown {
-            // The database is shutting down. All handles to the shared state
-            // have dropped. The background task should exit.
+            // 数据库正在关闭。共享状态的所有句柄都已丢弃。
+            // 后台任务应该退出。
             return None;
         }
 
-        // This is needed to make the borrow checker happy. In short, `lock()`
-        // returns a `MutexGuard` and not a `&mut State`. The borrow checker is
-        // not able to see "through" the mutex guard and determine that it is
-        // safe to access both `state.expirations` and `state.entries` mutably,
-        // so we get a "real" mutable reference to `State` outside of the loop.
+        // 这是为了让借用检查器满意。简而言之，`lock()` 返回一个 `MutexGuard`
+        // 而不是 `&mut State`。借用检查器无法"看穿"互斥锁保护，
+        // 确定同时可变访问 `state.expirations` 和 `state.entries` 是安全的，
+        // 所以我们在线程外获取 `State` 的"真正"可变引用。
         let state = &mut *state;
 
-        // Find all keys scheduled to expire **before** now.
+        // 查找所有计划在 **现在之前** 过期的键。
         let now = Instant::now();
 
         while let Some(&(when, ref key)) = state.expirations.iter().next() {
             if when > now {
-                // Done purging, `when` is the instant at which the next key
-                // expires. The worker task will wait until this instant.
+                // 清理完成，`when` 是下一个键过期的时刻。
+                // 工作线程将等待直到此时刻。
                 return Some(when);
             }
 
-            // The key expired, remove it
+            // 键已过期，移除它。
             state.entries.remove(key);
             state.expirations.remove(&(when, key.clone()));
         }
@@ -321,10 +289,10 @@ impl Shared {
         None
     }
 
-    /// Returns `true` if the database is shutting down
+    /// 如果数据库正在关闭，返回 `true`。
     ///
-    /// The `shutdown` flag is set when all `Db` values have dropped, indicating
-    /// that the shared state can no longer be accessed.
+    /// 当所有 `Db` 值都已被丢弃时，`shutdown` 标志被设置，
+    /// 表明共享状态不能再被访问。
     fn is_shutdown(&self) -> bool {
         self.state.lock().unwrap().shutdown
     }
@@ -339,28 +307,25 @@ impl State {
     }
 }
 
-/// Routine executed by the background task.
+/// 由后台任务执行的例程。
 ///
-/// Wait to be notified. On notification, purge any expired keys from the shared
-/// state handle. If `shutdown` is set, terminate the task.
+/// 等待被通知。收到通知后，从共享状态句柄中清除任何过期键。
+/// 如果设置了 `shutdown`，则终止任务。
 async fn purge_expired_tasks(shared: Arc<Shared>) {
-    // If the shutdown flag is set, then the task should exit.
+    // 如果关闭标志被设置，则任务应该退出。
     while !shared.is_shutdown() {
-        // Purge all keys that are expired. The function returns the instant at
-        // which the **next** key will expire. The worker should wait until the
-        // instant has passed then purge again.
+        // 清除所有已过期的键。该函数返回 **下一个** 键过期的
+        // 时刻。工作线程应等待到此时刻过去，然后再次清理。
         if let Some(when) = shared.purge_expired_keys() {
-            // Wait until the next key expires **or** until the background task
-            // is notified. If the task is notified, then it must reload its
-            // state as new keys have been set to expire early. This is done by
-            // looping.
+            // 等待直到下一个键过期 **或** 直到后台任务被通知。
+            // 如果任务被通知，则必须重新加载其状态，因为新的键已
+            // 被设置为提前过期。这是通过循环来实现的。
             tokio::select! {
                 _ = time::sleep_until(when) => {}
                 _ = shared.background_task.notified() => {}
             }
         } else {
-            // There are no keys expiring in the future. Wait until the task is
-            // notified.
+            // 未来没有键要过期。等待直到任务被通知。
             shared.background_task.notified().await;
         }
     }

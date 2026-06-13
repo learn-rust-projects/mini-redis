@@ -1,57 +1,40 @@
 # mini-redis
 
-`mini-redis` is an incomplete, idiomatic implementation of a
-[Redis](https://redis.io) client and server built with
-[Tokio](https://tokio.rs).
+`mini-redis` 是一个不完整的、符合 Rust 惯用风格的 [Redis](https://redis.io) 客户端和服务器实现，基于 [Tokio](https://tokio.rs) 构建。
 
-The intent of this project is to provide a larger example of writing a Tokio
-application.
+本项目的目的是提供一个更大型的 Tokio 应用编写示例。
 
-**Disclaimer** Please don't use mini-redis in production. This project is
-intended to be a learning resource, and omits various parts of the Redis
-protocol because implementing them would not introduce any new concepts. We will
-not add new features because you need them in your project — use one of the
-fully featured alternatives instead.
+**免责声明** 请勿在生产环境中使用 mini-redis。本项目旨在作为学习资源，并且省略了 Redis 协议的某些部分，因为实现它们不会引入任何新概念。我们不会因为你需要在项目中使用新功能而添加它们——请改用那些功能完备的替代方案。
 
-## Why Redis
+## 为什么选择 Redis
 
-The primary goal of this project is teaching Tokio. Doing this requires a
-project with a wide range of features with a focus on implementation simplicity.
-Redis, an in-memory database, provides a wide range of features and uses a
-simple wire protocol. The wide range of features allows demonstrating many Tokio
-patterns in a "real world" context.
+本项目的主要目标是教授 Tokio。这需要一个功能范围广泛且注重实现简洁性的项目。Redis，一个内存数据库，提供了广泛的功能，并使用简单的线路协议。广泛的功能允许在"真实世界"的上下文中演示许多 Tokio 模式。
 
-The Redis wire protocol documentation can be found [here](https://redis.io/topics/protocol).
+Redis 线路协议文档可以在 [这里](https://redis.io/topics/protocol) 找到。
 
-The set of commands Redis provides can be found
-[here](https://redis.io/commands).
+Redis 提供的命令集可以在 [这里](https://redis.io/commands) 找到。
 
+## 运行
 
-## Running
+该仓库提供了一个服务器、一个客户端库，以及一些用于与服务器交互的客户端可执行文件。
 
-The repository provides a server, client library, and some client executables
-for interacting with the server.
-
-Start the server:
+启动服务器:
 
 ```
 RUST_LOG=debug cargo run --bin mini-redis-server
 ```
 
-The [`tracing`](https://github.com/tokio-rs/tracing) crate is used to provide structured logs.
-You can substitute `debug` with the desired [log level][level].
+[`tracing`](https://github.com/tokio-rs/tracing) crate 用于提供结构化日志。你可以将 `debug` 替换为所需的 [日志级别][level]。
 
 [level]: https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html#directives
 
-Then, in a different terminal window, the various client [examples](examples)
-can be executed. For example:
+然后，在另一个终端窗口中，可以执行各种客户端 [示例](examples)。例如:
 
 ```
 cargo run --example hello_world
 ```
 
-Additionally, a CLI client is provided to run arbitrary commands from the
-terminal. With the server running, the following works:
+此外，还提供了一个 CLI 客户端，用于从终端运行任意命令。在服务器运行的情况下，以下命令有效:
 
 ```
 cargo run --bin mini-redis-cli set foo bar
@@ -61,32 +44,24 @@ cargo run --bin mini-redis-cli get foo
 
 ## OpenTelemetry
 
-If you are running many instances of your application (which is usually the case
-when you are developing a cloud service, for example), you need a way to get all
-of your trace data out of your host and into a centralized place. There are many
-options here, such as Prometheus, Jaeger, DataDog, Honeycomb, AWS X-Ray etc.
+如果你正在运行多个应用实例（例如在开发云服务时通常如此），你需要一种方法将所有追踪数据从主机中提取到集中式存储中。这里有很多选项，例如 Prometheus、Jaeger、DataDog、Honeycomb、AWS X-Ray 等。
 
-We leverage OpenTelemetry, because it's an open standard that allows for a
-single data format to be used for all the options mentioned above (and more).
-This eliminates the risk of vendor lock-in, since you can switch between
-providers if needed.
+我们利用 OpenTelemetry，因为它是一个开放标准，允许在上述所有选项（以及更多选项）中使用单一数据格式。这消除了供应商锁定的风险，因为如果需要，你可以在提供商之间切换。
 
-### AWS X-Ray example
+### AWS X-Ray 示例
 
-To enable sending traces to X-Ray, use the `otel` feature:
+要启用向 X-Ray 发送追踪数据，请使用 `otel` 特性:
 ```
 RUST_LOG=debug cargo run --bin mini-redis-server --features otel
 ```
 
-This will switch `tracing` to use `tracing-opentelemetry`. You will need to
-have a copy of AWSOtelCollector running on the same host.
+这将使 `tracing` 切换到使用 `tracing-opentelemetry`。你需要在同一主机上运行一份 AWSOtelCollector 的副本。
 
-For demo purposes, you can follow the setup documented at
-https://github.com/aws-observability/aws-otel-collector/blob/main/docs/developers/docker-demo.md#run-a-single-aws-otel-collector-instance-in-docker
+出于演示目的，你可以按照 https://github.com/aws-observability/aws-otel-collector/blob/main/docs/developers/docker-demo.md#run-a-single-aws-otel-collector-instance-in-docker 记录的步骤进行设置。
 
-## Supported commands
+## 支持的命令
 
-`mini-redis` currently supports the following commands.
+`mini-redis` 目前支持以下命令。
 
 * [PING](https://redis.io/commands/ping)
 * [GET](https://redis.io/commands/get)
@@ -94,99 +69,73 @@ https://github.com/aws-observability/aws-otel-collector/blob/main/docs/developer
 * [PUBLISH](https://redis.io/commands/publish)
 * [SUBSCRIBE](https://redis.io/commands/subscribe)
 
-The Redis wire protocol specification can be found
-[here](https://redis.io/topics/protocol).
+Redis 线路协议规范可以在 [这里](https://redis.io/topics/protocol) 找到。
 
-There is no support for persistence yet.
+目前尚不支持持久化。
 
-## Tokio patterns
+## Tokio 模式
 
-The project demonstrates a number of useful patterns, including:
+该项目演示了许多有用的模式，包括:
 
-### TCP server
+### TCP 服务器
 
-[`server.rs`](src/server.rs) starts a TCP server that accepts connections,
-and spawns a new task per connection. It gracefully handles `accept` errors.
+[`server.rs`](src/server.rs) 启动一个 TCP 服务器，接受连接，并为每个连接生成一个新任务。它能够优雅地处理 `accept` 错误。
 
-### Client library
+### 客户端库
 
-[`client.rs`](src/clients/client.rs) shows how to model an asynchronous client. The
-various capabilities are exposed as `async` methods.
+[`client.rs`](src/clients/client.rs) 展示了如何建模一个异步客户端。各种能力以 `async` 方法的形式公开。
 
-### State shared across sockets
+### 跨 socket 共享状态
 
-The server maintains a [`Db`] instance that is accessible from all connected
-connections. The [`Db`] instance manages the key-value state as well as pub/sub
-capabilities.
+服务器维护一个可从所有已连接连接访问的 [`Db`] 实例。[`Db`] 实例管理键值状态以及 pub/sub 功能。
 
 [`Db`]: src/db.rs
 
-### Framing
+### 成帧
 
-[`connection.rs`](src/connection.rs) and [`frame.rs`](src/frame.rs) show how to
-idiomatically implement a wire protocol. The protocol is modeled using an
-intermediate representation, the `Frame` structure. `Connection` takes a
-`TcpStream` and exposes an API that sends and receives `Frame` values.
+[`connection.rs`](src/connection.rs) 和 [`frame.rs`](src/frame.rs) 展示了如何以惯用风格实现线路协议。该协议使用一个中间表示——`Frame` 结构体——来建模。`Connection` 接收一个 `TcpStream` 并公开一个发送和接收 `Frame` 值的 API。
 
-### Graceful shutdown
+### 优雅关闭
 
-The server implements graceful shutdown. [`tokio::signal`] is used to listen for
-a SIGINT. Once the signal is received, shutdown begins. The server stops
-accepting new connections. Existing connections are notified to shutdown
-gracefully. In-flight work is completed, and the connection is closed.
+服务器实现了优雅关闭。[`tokio::signal`] 用于监听 SIGINT 信号。一旦收到信号，关闭过程开始。服务器停止接受新连接。现有连接被通知优雅地关闭。正在执行的工作完成，然后连接被关闭。
 
 [`tokio::signal`]: https://docs.rs/tokio/*/tokio/signal/
 
-### Concurrent connection limiting
+### 并发连接限制
 
-The server uses a [`Semaphore`] limits the maximum number of concurrent
-connections. Once the limit is reached, the server stops accepting new
-connections until an existing one terminates.
+服务器使用 [`Semaphore`] 限制最大并发连接数。一旦达到限制，服务器停止接受新连接，直到现有连接终止。
 
 [`Semaphore`]: https://docs.rs/tokio/*/tokio/sync/struct.Semaphore.html
 
-### Pub/Sub
+### 发布/订阅
 
-The server implements non-trivial pub/sub capability. The client may subscribe
-to multiple channels and update its subscription at any time. The server
-implements this using one [broadcast channel][broadcast] per channel and a
-[`StreamMap`] per connection. Clients are able to send subscription commands to
-the server to update the active subscriptions.
+服务器实现了非平凡的 pub/sub 功能。客户端可以订阅多个频道，并随时更新其订阅。服务器通过为每个频道使用一个[广播通道][broadcast] 并为每个连接使用一个 [`StreamMap`] 来实现此功能。客户端可以向服务器发送订阅命令来更新活动的订阅。
 
 [broadcast]: https://docs.rs/tokio/*/tokio/sync/broadcast/index.html
 [`StreamMap`]: https://docs.rs/tokio-stream/*/tokio_stream/struct.StreamMap.html
 
-### Using a `std::sync::Mutex` in an async application
+### 在异步应用中使用 `std::sync::Mutex`
 
-The server uses a `std::sync::Mutex` and **not** a Tokio mutex to synchronize
-access to shared state. See [`db.rs`](src/db.rs) for more details.
+服务器使用 `std::sync::Mutex` **而不是** Tokio 互斥锁来同步对共享状态的访问。更多详情请参见 [`db.rs`](src/db.rs)。
 
-### Testing asynchronous code that relies on time
+### 测试依赖时间的异步代码
 
-In [`tests/server.rs`](tests/server.rs), there are tests for key expiration.
-These tests depend on time passing. In order to make the tests deterministic,
-time is mocked out using Tokio's testing utilities.
+在 [`tests/server.rs`](tests/server.rs) 中，有针对键过期的测试。这些测试依赖于时间的流逝。为了使测试具有确定性，使用 Tokio 的测试工具模拟了时间。
 
-## Contributing
+## 贡献
 
-Contributions to `mini-redis` are welcome. Keep in mind, the goal of the project
-is **not** to reach feature parity with real Redis, but to demonstrate
-asynchronous Rust patterns with Tokio.
+欢迎对 `mini-redis` 做出贡献。请记住，本项目的目标 **不是** 达到与真正 Redis 的功能对等，而是展示使用 Tokio 的异步 Rust 模式。
 
-Commands or other features should only be added if doing so is useful to
-demonstrate a new pattern.
+只有当添加命令或其他功能有助于展示新模式时，才应添加。
 
-Contributions should come with extensive comments targeted to new Tokio users.
+贡献应附带针对 Tokio 新手的详细注释。
 
-Contributions that only focus on clarifying and improving comments are very
-welcome.
+仅关注澄清和改进注释的贡献非常受欢迎。
 
-## License
+## 许可
 
-This project is licensed under the [MIT license](LICENSE).
+本项目采用 [MIT 许可](LICENSE)。
 
-### Contribution
+### 贡献
 
-Unless you explicitly state otherwise, any contribution intentionally submitted
-for inclusion in `mini-redis` by you, shall be licensed as MIT, without any
-additional terms or conditions.
+除非你明确声明，否则你有意提交以包含在 `mini-redis` 中的任何贡献，均应按照 MIT 许可授权，不附加任何额外条款或条件。
